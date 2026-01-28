@@ -1,0 +1,295 @@
+{% extends "base.html" %}
+
+{% block title %}لوحة التحكم - نظام إدارة المبيعات بالتقسيط{% endblock %}
+
+{% block page_title %}لوحة التحكم{% endblock %}
+
+{% block content %}
+<!-- Statistics Cards -->
+<div class="stats-grid" id="statsContainer">
+    <div class="stat-card primary">
+        <div class="stat-icon">
+            <i class="bi bi-people-fill"></i>
+        </div>
+        <div class="stat-info">
+            <span class="stat-value" id="totalCustomers">0</span>
+            <span class="stat-label">إجمالي العملاء</span>
+        </div>
+    </div>
+    
+    <div class="stat-card danger">
+        <div class="stat-icon">
+            <i class="bi bi-cash-coin"></i>
+        </div>
+        <div class="stat-info">
+            <span class="stat-value" id="totalDebt">0</span>
+            <span class="stat-label">إجمالي المديونيات</span>
+        </div>
+    </div>
+    
+    <div class="stat-card success">
+        <div class="stat-icon">
+            <i class="bi bi-check-circle-fill"></i>
+        </div>
+        <div class="stat-info">
+            <span class="stat-value" id="totalPaid">0</span>
+            <span class="stat-label">إجمالي المدفوعات</span>
+        </div>
+    </div>
+    
+    <div class="stat-card warning">
+        <div class="stat-icon">
+            <i class="bi bi-hourglass-split"></i>
+        </div>
+        <div class="stat-info">
+            <span class="stat-value" id="totalRemaining">0</span>
+            <span class="stat-label">المتبقي للتحصيل</span>
+        </div>
+    </div>
+</div>
+
+<!-- Customers Table Section -->
+<div class="card table-card">
+    <div class="card-header">
+        <h5 class="card-title">
+            <i class="bi bi-table"></i>
+            قائمة العملاء
+        </h5>
+        <div class="card-actions">
+            <div class="search-input">
+                <i class="bi bi-search"></i>
+                <input type="text" id="searchInput" placeholder="بحث بالاسم أو رقم الهاتف..." onkeyup="searchCustomers()">
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table" id="customersTable">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>اسم العميل</th>
+                        <th>رقم الهاتف</th>
+                        <th>إجمالي المديونية</th>
+                        <th>المدفوع</th>
+                        <th>المتبقي</th>
+                        <th>الحالة</th>
+                        <th>الإجراءات</th>
+                    </tr>
+                </thead>
+                <tbody id="customersTableBody">
+                    <!-- سيتم ملؤها بواسطة JavaScript -->
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Pagination -->
+        <div class="d-flex flex-column align-items-center mt-3" id="paginationContainer" style="display: none !important; gap: 10px;">
+            <nav aria-label="Page navigation">
+                <ul class="pagination pagination-sm mb-0" id="paginationControls">
+                    <!-- سيتم ملؤها بواسطة JavaScript -->
+                </ul>
+            </nav>
+            <div class="text-muted small">
+                يعرض <span id="showingStart">0</span> إلى <span id="showingEnd">0</span> من <span id="totalItems">0</span> عميل
+            </div>
+        </div>
+        
+        <!-- Empty State -->
+        <div class="empty-state" id="emptyState" style="display: none;">
+            <i class="bi bi-inbox"></i>
+            <h5>لا يوجد عملاء</h5>
+            <p>ابدأ بإضافة عميل جديد لعرض البيانات هنا</p>
+        </div>
+    </div>
+</div>
+
+<!-- Reports Section -->
+<div class="card reports-card mt-4" id="reportsSection">
+    <div class="card-header">
+        <h5 class="card-title">
+            <i class="bi bi-graph-up"></i>
+            ملخص التقارير
+        </h5>
+    </div>
+    <div class="card-body">
+        <div class="reports-grid">
+            <div class="report-item">
+                <div class="report-icon success">
+                    <i class="bi bi-person-check"></i>
+                </div>
+                <div class="report-info">
+                    <span class="report-value" id="paidOffCustomers">0</span>
+                    <span class="report-label">عملاء مسددون بالكامل</span>
+                </div>
+            </div>
+            <div class="report-item">
+                <div class="report-icon warning">
+                    <i class="bi bi-person-exclamation"></i>
+                </div>
+                <div class="report-info">
+                    <span class="report-value" id="activeCustomers">0</span>
+                    <span class="report-label">عملاء لديهم مستحقات</span>
+                </div>
+            </div>
+            <div class="report-item">
+                <div class="report-icon info">
+                    <i class="bi bi-percent"></i>
+                </div>
+                <div class="report-info">
+                    <span class="report-value" id="collectionRate">0%</span>
+                    <span class="report-label">نسبة التحصيل</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Actions for Customer (Modal) -->
+<div class="modal fade" id="quickActionsModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="quickActionsTitle">إجراءات سريعة</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="quickActionCustomerId">
+                <div class="quick-actions-grid">
+                    <button class="quick-action-btn debt" onclick="openDebtModal()">
+                        <i class="bi bi-plus-circle-fill"></i>
+                        <span>مديونية جديدة</span>
+                    </button>
+                    <button class="quick-action-btn payment" onclick="openPaymentModal()">
+                        <i class="bi bi-cash-stack"></i>
+                        <span>تسديد قسط</span>
+                    </button>
+                    <button class="quick-action-btn view" onclick="viewCustomerDetails()">
+                        <i class="bi bi-eye-fill"></i>
+                        <span>عرض التفاصيل</span>
+                    </button>
+                    <button class="quick-action-btn delete" onclick="confirmDeleteCustomer()">
+                        <i class="bi bi-trash-fill"></i>
+                        <span>حذف العميل</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Debt Modal -->
+<div class="modal fade" id="addDebtModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">
+                    <i class="bi bi-plus-circle-fill"></i>
+                    إضافة مديونية جديدة
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="addDebtForm" onsubmit="addDebt(event)">
+                <div class="modal-body">
+                    <input type="hidden" id="debtCustomerId">
+                    <div class="customer-info-mini" id="debtCustomerInfo"></div>
+                    <div class="mb-3">
+                        <label class="form-label">مبلغ المديونية <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" id="debtAmount" required min="0.01" step="0.01" placeholder="0.00">
+                            <span class="input-group-text">دينار</span>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">وصف (اختياري)</label>
+                        <input type="text" class="form-control" id="debtDescription" placeholder="مثال: بضاعة جديدة">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+                    <button type="submit" class="btn btn-danger">
+                        <i class="bi bi-plus-lg"></i>
+                        إضافة المديونية
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Pay Installment Modal -->
+<div class="modal fade" id="payInstallmentModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title">
+                    <i class="bi bi-cash-stack"></i>
+                    تسديد قسط
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="payInstallmentForm" onsubmit="payInstallment(event)">
+                <div class="modal-body">
+                    <input type="hidden" id="paymentCustomerId">
+                    <div class="customer-info-mini" id="paymentCustomerInfo"></div>
+                    <div class="mb-3">
+                        <label class="form-label">مبلغ الدفعة <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" id="paymentAmount" required min="0.01" step="0.01" placeholder="0.00">
+                            <span class="input-group-text">دينار</span>
+                        </div>
+                        <small class="text-muted">الرصيد المتبقي: <span id="remainingBalanceHint">0</span> دينار</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">ملاحظات (اختياري)</label>
+                        <input type="text" class="form-control" id="paymentDescription" placeholder="مثال: قسط شهر يناير">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+                    <button type="submit" class="btn btn-success">
+                        <i class="bi bi-check-lg"></i>
+                        تسجيل الدفعة
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteConfirmModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    تأكيد الحذف
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-center">
+                <p>هل أنت متأكد من حذف هذا العميل؟</p>
+                <p class="text-muted small">سيتم حذف جميع المعاملات المرتبطة به</p>
+            </div>
+            <div class="modal-footer justify-content-center">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+                <button type="button" class="btn btn-danger" onclick="deleteCustomer()">
+                    <i class="bi bi-trash-fill"></i>
+                    حذف
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // تحميل البيانات عند فتح الصفحة
+    document.addEventListener('DOMContentLoaded', function() {
+        loadSummary();
+        loadCustomers();
+    });
+</script>
+{% endblock %}

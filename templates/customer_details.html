@@ -1,0 +1,555 @@
+{% extends "base.html" %}
+
+{% block title %}{{ customer.name }} - نظام إدارة المبيعات بالتقسيط{% endblock %}
+
+{% block page_title %}تفاصيل العميل{% endblock %}
+
+{% block content %}
+<!-- Back Button -->
+<div class="mb-4">
+    <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-right"></i>
+        العودة للوحة التحكم
+    </a>
+</div>
+
+<!-- Customer Header Card -->
+<div class="customer-header-card">
+    <div class="customer-avatar">
+        <span>{{ customer.name[0] }}</span>
+    </div>
+    <div class="customer-main-info">
+        <h2 id="customerName">{{ customer.name }}</h2>
+        <p class="phone"><i class="bi bi-telephone-fill"></i> <span id="customerPhone">{{ customer.phone }}</span></p>
+        <p class="date"><i class="bi bi-calendar3"></i> تاريخ الإضافة: {{ customer.created_at.strftime('%Y-%m-%d') }}</p>
+    </div>
+    <div class="customer-actions">
+        <button class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#addDebtModal">
+            <i class="bi bi-plus-circle"></i>
+            مديونية جديدة
+        </button>
+        <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#payInstallmentModal">
+            <i class="bi bi-cash-stack"></i>
+            تسديد قسط
+        </button>
+        <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editCustomerModal">
+            <i class="bi bi-pencil"></i>
+            تعديل
+        </button>
+    </div>
+</div>
+
+<!-- Financial Summary -->
+<div class="financial-summary">
+    <div class="summary-card initial">
+        <div class="summary-icon">
+            <i class="bi bi-wallet2"></i>
+        </div>
+        <div class="summary-info">
+            <span class="summary-label">المديونية الأولية</span>
+            <span class="summary-value">{{ "%.2f"|format(customer.initial_debt) }} <small>دينار</small></span>
+        </div>
+    </div>
+    
+    <div class="summary-card total">
+        <div class="summary-icon">
+            <i class="bi bi-cash-coin"></i>
+        </div>
+        <div class="summary-info">
+            <span class="summary-label">إجمالي المديونية</span>
+            <span class="summary-value" id="totalDebt">{{ "%.2f"|format(customer.total_debt) }} <small>دينار</small></span>
+        </div>
+    </div>
+    
+    <div class="summary-card paid">
+        <div class="summary-icon">
+            <i class="bi bi-check-circle"></i>
+        </div>
+        <div class="summary-info">
+            <span class="summary-label">المدفوع</span>
+            <span class="summary-value" id="totalPaid">{{ "%.2f"|format(customer.total_paid) }} <small>دينار</small></span>
+        </div>
+    </div>
+    
+    <div class="summary-card remaining {% if customer.remaining_balance <= 0 %}success{% else %}danger{% endif %}">
+        <div class="summary-icon">
+            <i class="bi bi-hourglass-split"></i>
+        </div>
+        <div class="summary-info">
+            <span class="summary-label">المتبقي</span>
+            <span class="summary-value" id="remainingBalance">{{ "%.2f"|format(customer.remaining_balance) }} <small>دينار</small></span>
+        </div>
+    </div>
+</div>
+
+<!-- Payment Status -->
+<div class="payment-status {% if customer.is_paid_off %}paid{% else %}unpaid{% endif %}">
+    {% if customer.is_paid_off %}
+    <i class="bi bi-check-circle-fill"></i>
+    <span>تم السداد بالكامل</span>
+    {% else %}
+    <i class="bi bi-exclamation-circle-fill"></i>
+    <span>يوجد رصيد متبقي</span>
+    {% endif %}
+</div>
+
+<!-- Progress Bar -->
+<div class="payment-progress-container">
+    <div class="progress-header">
+        <span>نسبة السداد</span>
+        <span id="progressPercentage">
+            {% if customer.total_debt > 0 %}
+            {{ "%.1f"|format((customer.total_paid / customer.total_debt) * 100) }}%
+            {% else %}
+            0%
+            {% endif %}
+        </span>
+    </div>
+    <div class="progress">
+        <div class="progress-bar" id="progressBar"></div>
+    </div>
+</div>
+
+<!-- Transactions Table -->
+<div class="card table-card mt-4">
+    <div class="card-header">
+        <h5 class="card-title">
+            <i class="bi bi-list-ul"></i>
+            سجل المعاملات
+        </h5>
+        <div class="card-actions">
+            <select class="form-select form-select-sm" id="transactionFilter" onchange="filterTransactions()">
+                <option value="all">جميع المعاملات</option>
+                <option value="debt">المديونيات</option>
+                <option value="payment">الدفعات</option>
+            </select>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table transactions-table" id="transactionsTable">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>النوع</th>
+                        <th>المبلغ</th>
+                        <th>الوصف</th>
+                        <th>التاريخ</th>
+                        <th>الإجراء</th>
+                    </tr>
+                </thead>
+                <tbody id="transactionsTableBody">
+                    <!-- سيتم ملؤها بواسطة JavaScript -->
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Empty State -->
+        <div class="empty-state" id="transactionsEmptyState" style="display: none;">
+            <i class="bi bi-clock-history"></i>
+            <h5>لا توجد معاملات</h5>
+            <p>لم يتم تسجيل أي معاملات لهذا العميل بعد</p>
+        </div>
+    </div>
+</div>
+
+<!-- Add Debt Modal -->
+<div class="modal fade" id="addDebtModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">
+                    <i class="bi bi-plus-circle-fill"></i>
+                    إضافة مديونية جديدة
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="addDebtForm" onsubmit="addDebtDetail(event)">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">مبلغ المديونية <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" id="debtAmount" required min="0.01" step="0.01" placeholder="0.00">
+                            <span class="input-group-text">دينار</span>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">وصف (اختياري)</label>
+                        <input type="text" class="form-control" id="debtDescription" placeholder="مثال: بضاعة جديدة">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+                    <button type="submit" class="btn btn-danger">
+                        <i class="bi bi-plus-lg"></i>
+                        إضافة المديونية
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Pay Installment Modal -->
+<div class="modal fade" id="payInstallmentModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title">
+                    <i class="bi bi-cash-stack"></i>
+                    تسديد قسط
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="payInstallmentForm" onsubmit="payInstallmentDetail(event)">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">مبلغ الدفعة <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" id="paymentAmount" required min="0.01" step="0.01" placeholder="0.00">
+                            <span class="input-group-text">دينار</span>
+                        </div>
+                        <small class="text-muted">الرصيد المتبقي: <span id="remainingHint">{{ "%.2f"|format(customer.remaining_balance) }}</span> دينار</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">ملاحظات (اختياري)</label>
+                        <input type="text" class="form-control" id="paymentDescription" placeholder="مثال: قسط شهر يناير">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+                    <button type="submit" class="btn btn-success">
+                        <i class="bi bi-check-lg"></i>
+                        تسجيل الدفعة
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Customer Modal -->
+<div class="modal fade" id="editCustomerModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-pencil-fill"></i>
+                    تعديل بيانات العميل
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="editCustomerForm" onsubmit="updateCustomer(event)">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">اسم العميل <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="editCustomerName" required value="{{ customer.name }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">رقم الهاتف <span class="text-danger">*</span></label>
+                        <input type="tel" class="form-control" id="editCustomerPhone" required value="{{ customer.phone }}">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-lg"></i>
+                        حفظ التعديلات
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Transaction Confirmation Modal -->
+<div class="modal fade" id="deleteTransactionModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    تأكيد الحذف
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-center">
+                <p>هل أنت متأكد من حذف هذه المعاملة؟</p>
+            </div>
+            <div class="modal-footer justify-content-center">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteTransaction">
+                    <i class="bi bi-trash-fill"></i>
+                    حذف
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    /* global formatNumber, showToast, bootstrap */
+    
+    // Wrap Jinja value in quotes so the JS parser stays happy in the template.
+    const CUSTOMER_ID = Number('{{ customer.id }}');
+    let allTransactions = [];
+    
+    // تحميل المعاملات عند فتح الصفحة
+    document.addEventListener('DOMContentLoaded', function() {
+        loadTransactions();
+        initializeProgressBar();
+    });
+    
+    // تهيئة شريط التقدم
+    function initializeProgressBar() {
+        const totalDebt = parseFloat('{{ customer.total_debt }}');
+        const totalPaid = parseFloat('{{ customer.total_paid }}');
+        const percentage = totalDebt > 0 ? (totalPaid / totalDebt) * 100 : 0;
+        document.getElementById('progressBar').style.width = percentage + '%';
+    }
+    
+    // تحميل المعاملات
+    async function loadTransactions() {
+        try {
+            const response = await fetch(`/api/customers/${CUSTOMER_ID}/transactions`);
+            allTransactions = await response.json();
+            displayTransactions(allTransactions);
+        } catch (error) {
+            console.error('Error loading transactions:', error);
+        }
+    }
+    
+    // عرض المعاملات
+    function displayTransactions(transactions) {
+        const tbody = document.getElementById('transactionsTableBody');
+        const emptyState = document.getElementById('transactionsEmptyState');
+        const table = document.getElementById('transactionsTable');
+        
+        if (transactions.length === 0) {
+            table.style.display = 'none';
+            emptyState.style.display = 'flex';
+            return;
+        }
+        
+        table.style.display = 'table';
+        emptyState.style.display = 'none';
+        
+        tbody.innerHTML = transactions.map((t, index) => `
+            <tr class="transaction-${t.transaction_type}">
+                <td>${index + 1}</td>
+                <td>
+                    <span class="badge ${t.transaction_type === 'debt' ? 'bg-danger' : 'bg-success'}">
+                        ${t.transaction_type_ar}
+                    </span>
+                </td>
+                <td class="${t.transaction_type === 'debt' ? 'text-danger' : 'text-success'}">
+                    ${t.transaction_type === 'debt' ? '+' : '-'}${formatNumber(t.amount)} دينار
+                </td>
+                <td>${t.description || '-'}</td>
+                <td>${t.created_at}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-danger" onclick="confirmDeleteTransaction(${t.id})">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+    }
+    
+    // فلترة المعاملات
+    function filterTransactions() {
+        const filter = document.getElementById('transactionFilter').value;
+        
+        if (filter === 'all') {
+            displayTransactions(allTransactions);
+        } else {
+            const filtered = allTransactions.filter(t => t.transaction_type === filter);
+            displayTransactions(filtered);
+        }
+    }
+    
+    // إضافة مديونية جديدة
+    async function addDebtDetail(event) {
+        event.preventDefault();
+        
+        const amount = document.getElementById('debtAmount').value;
+        const description = document.getElementById('debtDescription').value;
+        
+        try {
+            const response = await fetch(`/api/customers/${CUSTOMER_ID}/add-debt`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ amount, description })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                showToast('success', data.message);
+                updateCustomerInfo(data.customer);
+                loadTransactions();
+                
+                // إغلاق المودال وإعادة تعيين النموذج
+                const modalParams = document.getElementById('addDebtModal');
+                const modal = bootstrap.Modal.getOrCreateInstance(modalParams);
+                modal.hide();
+                document.getElementById('addDebtForm').reset();
+            } else {
+                showToast('error', data.error);
+            }
+        } catch (error) {
+            showToast('error', 'حدث خطأ أثناء إضافة المديونية');
+        }
+    }
+    
+    // تسديد قسط
+    async function payInstallmentDetail(event) {
+        event.preventDefault();
+        
+        const amount = document.getElementById('paymentAmount').value;
+        const description = document.getElementById('paymentDescription').value;
+        
+        try {
+            const response = await fetch(`/api/customers/${CUSTOMER_ID}/pay-installment`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ amount, description })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                showToast('success', data.message);
+                updateCustomerInfo(data.customer);
+                loadTransactions();
+                
+                // إغلاق المودال وإعادة تعيين النموذج
+                const modalParams = document.getElementById('payInstallmentModal');
+                const modal = bootstrap.Modal.getOrCreateInstance(modalParams);
+                modal.hide();
+                document.getElementById('payInstallmentForm').reset();
+            } else {
+                showToast('error', data.error);
+            }
+        } catch (error) {
+            showToast('error', 'حدث خطأ أثناء تسجيل الدفعة');
+        }
+    }
+    
+    // تحديث بيانات العميل
+    async function updateCustomer(event) {
+        event.preventDefault();
+        
+        const name = document.getElementById('editCustomerName').value;
+        const phone = document.getElementById('editCustomerPhone').value;
+        
+        try {
+            const response = await fetch(`/api/customers/${CUSTOMER_ID}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, phone })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                showToast('success', data.message);
+                document.getElementById('customerName').textContent = data.customer.name;
+                document.getElementById('customerPhone').textContent = data.customer.phone;
+                
+                // تحديث الحرف الأول في الأفاتار
+                document.querySelector('.customer-avatar span').textContent = data.customer.name[0];
+                
+                const modalParams = document.getElementById('editCustomerModal');
+                const modal = bootstrap.Modal.getOrCreateInstance(modalParams);
+                modal.hide();
+            } else {
+                showToast('error', data.error);
+            }
+        } catch (error) {
+            showToast('error', 'حدث خطأ أثناء تحديث البيانات');
+        }
+    }
+    
+    // تحديث معلومات العميل المالية
+    /**
+     * Update customer financial information on the page
+     * @param {Object} customer - Customer object with financial data
+     */
+    function updateCustomerInfo(customer) {
+        document.getElementById('totalDebt').innerHTML = `${formatNumber(customer.total_debt)} <small>دينار</small>`;
+        document.getElementById('totalPaid').innerHTML = `${formatNumber(customer.total_paid)} <small>دينار</small>`;
+        document.getElementById('remainingBalance').innerHTML = `${formatNumber(customer.remaining_balance)} <small>دينار</small>`;
+        document.getElementById('remainingHint').textContent = formatNumber(customer.remaining_balance);
+        
+        // تحديث شريط التقدم
+        const percentage = customer.total_debt > 0 ? (customer.total_paid / customer.total_debt) * 100 : 0;
+        document.getElementById('progressBar').style.width = `${percentage}%`;
+        document.getElementById('progressPercentage').textContent = `${percentage.toFixed(1)}%`;
+        
+        // تحديث حالة السداد
+        const statusDiv = document.querySelector('.payment-status');
+        if (customer.is_paid_off) {
+            statusDiv.classList.remove('unpaid');
+            statusDiv.classList.add('paid');
+            statusDiv.innerHTML = '<i class="bi bi-check-circle-fill"></i><span>تم السداد بالكامل</span>';
+        } else {
+            statusDiv.classList.remove('paid');
+            statusDiv.classList.add('unpaid');
+            statusDiv.innerHTML = '<i class="bi bi-exclamation-circle-fill"></i><span>يوجد رصيد متبقي</span>';
+        }
+        
+        // تحديث لون بطاقة المتبقي
+        const remainingCard = document.querySelector('.summary-card.remaining');
+        if (customer.is_paid_off) {
+            remainingCard.classList.remove('danger');
+            remainingCard.classList.add('success');
+        } else {
+            remainingCard.classList.remove('success');
+            remainingCard.classList.add('danger');
+        }
+    }
+    
+    // تأكيد حذف معاملة
+    let transactionToDelete = null;
+    
+    function confirmDeleteTransaction(transactionId) {
+        transactionToDelete = transactionId;
+        const modalParams = document.getElementById('deleteTransactionModal');
+        const modal = bootstrap.Modal.getOrCreateInstance(modalParams);
+        modal.show();
+    }
+    
+    document.getElementById('confirmDeleteTransaction').addEventListener('click', async function() {
+        if (!transactionToDelete) return;
+        
+        try {
+            const response = await fetch(`/api/transactions/${transactionToDelete}`, {
+                method: 'DELETE'
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                showToast('success', data.message);
+                if (data.customer) {
+                    updateCustomerInfo(data.customer);
+                }
+                loadTransactions();
+                
+                const modalParams = document.getElementById('deleteTransactionModal');
+                const modal = bootstrap.Modal.getOrCreateInstance(modalParams);
+                modal.hide();
+            } else {
+                showToast('error', data.error);
+            }
+        } catch (error) {
+            showToast('error', 'حدث خطأ أثناء حذف المعاملة');
+        }
+        
+        transactionToDelete = null;
+    });
+</script>
+{% endblock %}
